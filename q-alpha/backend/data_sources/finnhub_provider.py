@@ -9,11 +9,12 @@ import logging
 import requests
 from typing import Any, Optional
 from datetime import datetime, timedelta
+import os
 
 logger = logging.getLogger("q-alpha.finnhub")
 
 FINNHUB_BASE = "https://finnhub.io/api/v1"
-FINNHUB_KEY  = "d6tp7hpr01qhkb4531f0d6tp7hpr01qhkb4531fg"
+FINNHUB_KEY  = os.getenv("FINNHUB_API_KEY", "d73m2ghr01qjjol3gt4gd73m2ghr01qjjol3gt50")
 
 
 def _get(path: str, params: dict) -> Optional[dict]:
@@ -356,4 +357,3 @@ class FinnhubProvider:
         data = _get("/calendar/ipo", {"from": frm, "to": to})
         cal = (data or {}).get("ipoCalendar", [])
         return cal[:20] if cal else None
-

@@ -1,0 +1,14 @@
+{
+  "_usage": "Fill in your API keys. Keep empty string if not available.",
+  "_how_to_apply": "Save as backend/config/api_keys.json or map to env vars in settings.py",
+  "yahoo": "",
+  "finnhub": "d73m2ghr01qjjol3gt4gd73m2ghr01qjjol3gt50",
+  "alpha_vantage": "X64K3UQRI6YMC1WJ",
+  "reddit_client_id": "",
+  "reddit_client_secret": "",
+  "google_trends": "",
+  "sec": "",
+  "opensecrets": "",
+  "usaspending": "",
+  "eulerpool": "eu_prod_1774678674268_kcnp2gtuvbt"
+}
