@@ -19,6 +19,18 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _cached_payload(cached):
+    if isinstance(cached, dict) and "data" in cached:
+        return cached.get("data"), cached.get("meta", {})
+    if isinstance(cached, dict):
+        src = cached.get("source", "unknown")
+    elif isinstance(cached, list) and cached and isinstance(cached[0], dict):
+        src = cached[0].get("source", "unknown")
+    else:
+        src = "unknown"
+    return cached, {"selected_source": src, "source_plan": ["cache_legacy"]}
+
+
 class AnalyzeRequest(BaseModel):
     ticker: str
     options: Optional[dict] = {}
@@ -32,13 +44,14 @@ async def stock_price(request: Request, ticker: str = Query(...)):
     cache_key = f"stock:price:{t}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
-    data = provider.fetch("stock/price", {"ticker": t}, source_type="stock")
-    if data:
-        cache_set(cache_key, data, ttl=settings.CACHE_TTL_STOCK)
-    return {"data": data, "cached": False}
+    payload = provider.fetch_with_meta("stock/price", {"ticker": t}, source_type="stock")
+    if payload.get("data"):
+        cache_set(cache_key, payload, ttl=settings.CACHE_TTL_STOCK)
+    return {"data": payload.get("data"), "meta": payload.get("meta"), "cached": False}
 
 
 @router.get("/stock/info")
@@ -49,13 +62,14 @@ async def stock_info(request: Request, ticker: str = Query(...)):
     cache_key = f"stock:info:{t}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
-    data = provider.fetch("stock/info", {"ticker": t}, source_type="stock")
-    if data:
-        cache_set(cache_key, data, ttl=3600)
-    return {"data": data, "cached": False}
+    payload = provider.fetch_with_meta("stock/info", {"ticker": t}, source_type="stock")
+    if payload.get("data"):
+        cache_set(cache_key, payload, ttl=3600)
+    return {"data": payload.get("data"), "meta": payload.get("meta"), "cached": False}
 
 
 @router.get("/stock/candles")
@@ -70,14 +84,15 @@ async def stock_candles(
     cache_key = f"stock:candles:{t}:{timeframe}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
-    data = provider.fetch("stock/candles", {"ticker": t, "timeframe": timeframe}, source_type="stock")
-    if data:
+    payload = provider.fetch_with_meta("stock/candles", {"ticker": t, "timeframe": timeframe}, source_type="stock")
+    if payload.get("data"):
         ttl = settings.CACHE_TTL_STOCK if timeframe in ("1d", "5d") else 300
-        cache_set(cache_key, data, ttl=ttl)
-    return {"data": data, "cached": False}
+        cache_set(cache_key, payload, ttl=ttl)
+    return {"data": payload.get("data"), "meta": payload.get("meta"), "cached": False}
 
 
 @router.post("/ai/analyze")
@@ -91,15 +106,19 @@ async def ai_analyze(request: Request, body: AnalyzeRequest):
     cache_key = f"ai:analyze:{t}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
 
-    # Gather all input signals in parallel (best effort)
-    candle_data = provider.fetch("stock/candles", {"ticker": t, "timeframe": "3mo"}, source_type="stock")
-    insider_data = provider.fetch("insider", {"ticker": t}, source_type="sec")
-    whale_data = provider.fetch("whales", {"ticker": t})
-    analyst_data = provider.fetch("analyst", {"ticker": t})
+    candle_payload = provider.fetch_with_meta("stock/candles", {"ticker": t, "timeframe": "3mo"}, source_type="stock")
+    insider_payload = provider.fetch_with_meta("insider", {"ticker": t}, source_type="sec")
+    whale_payload = provider.fetch_with_meta("whales", {"ticker": t})
+    analyst_payload = provider.fetch_with_meta("analyst", {"ticker": t})
+    candle_data = candle_payload.get("data")
+    insider_data = insider_payload.get("data")
+    whale_data = whale_payload.get("data")
+    analyst_data = analyst_payload.get("data")
 
     analyzer = get_analyzer()
     result = analyzer.analyze(
@@ -110,8 +129,19 @@ async def ai_analyze(request: Request, body: AnalyzeRequest):
         analyst_data=analyst_data if isinstance(analyst_data, list) else [],
     )
 
-    cache_set(cache_key, result, ttl=settings.CACHE_TTL_AI)
-    return {"data": result, "cached": False}
+    meta = {
+        "endpoint": "ai/analyze",
+        "selected_source": "composite",
+        "inputs": {
+            "candles": candle_payload.get("meta"),
+            "insider": insider_payload.get("meta"),
+            "whales": whale_payload.get("meta"),
+            "analyst": analyst_payload.get("meta"),
+        },
+    }
+    payload = {"data": result, "meta": meta}
+    cache_set(cache_key, payload, ttl=settings.CACHE_TTL_AI)
+    return {"data": result, "meta": meta, "cached": False}
 
 
 @router.get("/ai/analyze")
@@ -122,13 +152,18 @@ async def ai_analyze_get(request: Request, ticker: str = Query(...)):
     cache_key = f"ai:analyze:{t}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
-    candle_data = provider.fetch("stock/candles", {"ticker": t, "timeframe": "3mo"}, source_type="stock")
-    insider_data = provider.fetch("insider", {"ticker": t}, source_type="sec")
-    whale_data = provider.fetch("whales", {"ticker": t})
-    analyst_data = provider.fetch("analyst", {"ticker": t})
+    candle_payload = provider.fetch_with_meta("stock/candles", {"ticker": t, "timeframe": "3mo"}, source_type="stock")
+    insider_payload = provider.fetch_with_meta("insider", {"ticker": t}, source_type="sec")
+    whale_payload = provider.fetch_with_meta("whales", {"ticker": t})
+    analyst_payload = provider.fetch_with_meta("analyst", {"ticker": t})
+    candle_data = candle_payload.get("data")
+    insider_data = insider_payload.get("data")
+    whale_data = whale_payload.get("data")
+    analyst_data = analyst_payload.get("data")
 
     analyzer = get_analyzer()
     result = analyzer.analyze(
@@ -138,8 +173,19 @@ async def ai_analyze_get(request: Request, ticker: str = Query(...)):
         whale_data=whale_data if isinstance(whale_data, list) else [],
         analyst_data=analyst_data if isinstance(analyst_data, list) else [],
     )
-    cache_set(cache_key, result, ttl=settings.CACHE_TTL_AI)
-    return {"data": result, "cached": False}
+    meta = {
+        "endpoint": "ai/analyze",
+        "selected_source": "composite",
+        "inputs": {
+            "candles": candle_payload.get("meta"),
+            "insider": insider_payload.get("meta"),
+            "whales": whale_payload.get("meta"),
+            "analyst": analyst_payload.get("meta"),
+        },
+    }
+    payload = {"data": result, "meta": meta}
+    cache_set(cache_key, payload, ttl=settings.CACHE_TTL_AI)
+    return {"data": result, "meta": meta, "cached": False}
 
 
 @router.get("/portfolio/famous")
@@ -149,9 +195,10 @@ async def famous_portfolio(request: Request, celebrity_name: str = Query(...)):
     cache_key = f"portfolio:famous:{celebrity_name.lower()}"
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
 
     provider = get_provider()
-    data = provider.fetch("portfolio/famous", {"celebrity_name": celebrity_name})
-    cache_set(cache_key, data, ttl=settings.CACHE_TTL_POLITICIANS)
-    return {"data": data, "cached": False}
+    payload = provider.fetch_with_meta("portfolio/famous", {"celebrity_name": celebrity_name})
+    cache_set(cache_key, payload, ttl=settings.CACHE_TTL_POLITICIANS)
+    return {"data": payload.get("data"), "meta": payload.get("meta"), "cached": False}
