@@ -35,31 +35,37 @@ export default function StockPage() {
   const [revenue, setRevenue]     = useState<any>(null);
   const [risk, setRisk]           = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
+  const [sourceMeta, setSourceMeta] = useState<Record<string, any>>({});
+
+  const setMeta = (key: string, meta: any) => {
+    if (!meta) return;
+    setSourceMeta(prev => ({ ...prev, [key]: meta }));
+  };
 
   useEffect(() => {
     if (!ticker) return;
     setLoading(true);
     Promise.allSettled([
-      api.getStockPrice(ticker).then(r => setPrice(r?.data)),
-      api.getStockInfo(ticker).then(r => setInfo(r?.data)),
-      api.getStockCandles(ticker, timeframe).then(r => setCandles(r?.data)),
+      api.getStockPrice(ticker).then(r => { setPrice(r?.data); setMeta('price', r?.meta); }),
+      api.getStockInfo(ticker).then(r => { setInfo(r?.data); setMeta('info', r?.meta); }),
+      api.getStockCandles(ticker, timeframe).then(r => { setCandles(r?.data); setMeta('candles', r?.meta); }),
     ]).finally(() => setLoading(false));
-    api.getInsider(ticker).then(r => setInsider(r?.data || [])).catch(() => {});
-    api.getWhales(ticker).then(r => setWhales(r?.data || [])).catch(() => {});
-    api.getAnalyst(ticker).then(r => setAnalyst(r?.data || [])).catch(() => {});
-    api.getSECFilings(ticker).then(r => setSec(r?.data || [])).catch(() => {});
-    api.getRevenue(ticker).then(r => setRevenue(r?.data)).catch(() => {});
-    api.getRisk(ticker).then(r => setRisk(r?.data || [])).catch(() => {});
+    api.getInsider(ticker).then(r => { setInsider(r?.data || []); setMeta('insider', r?.meta); }).catch(() => {});
+    api.getWhales(ticker).then(r => { setWhales(r?.data || []); setMeta('whales', r?.meta); }).catch(() => {});
+    api.getAnalyst(ticker).then(r => { setAnalyst(r?.data || []); setMeta('analyst', r?.meta); }).catch(() => {});
+    api.getSECFilings(ticker).then(r => { setSec(r?.data || []); setMeta('sec', r?.meta); }).catch(() => {});
+    api.getRevenue(ticker).then(r => { setRevenue(r?.data); setMeta('revenue', r?.meta); }).catch(() => {});
+    api.getRisk(ticker).then(r => { setRisk(r?.data || []); setMeta('risk', r?.meta); }).catch(() => {});
   }, [ticker]);
 
   useEffect(() => {
     if (!ticker) return;
-    api.getStockCandles(ticker, timeframe).then(r => setCandles(r?.data)).catch(() => {});
+    api.getStockCandles(ticker, timeframe).then(r => { setCandles(r?.data); setMeta('candles', r?.meta); }).catch(() => {});
   }, [timeframe, ticker]);
 
   useEffect(() => {
     if (!ticker || activeTab !== 'ai' || analysis) return;
-    api.analyzeStock(ticker).then(r => setAnalysis(r?.data)).catch(() => {});
+    api.analyzeStock(ticker).then(r => { setAnalysis(r?.data); setMeta('ai', r?.meta); }).catch(() => {});
   }, [activeTab, ticker]);
 
   const pos = price && price.change_pct >= 0;
@@ -111,6 +117,16 @@ export default function StockPage() {
                   </div>
                 </div>
               )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <div className="relative group">
+                <button className="text-[11px] px-2 py-1 rounded border border-q-border text-q-muted hover:text-q-text">
+                  悬停查看数据来源（1秒）
+                </button>
+                <div className="pointer-events-none absolute right-0 mt-2 w-[420px] max-h-80 overflow-auto rounded-lg border border-q-border bg-[#071028] p-3 text-[11px] text-q-dim opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-[1000ms] z-30">
+                  <pre className="whitespace-pre-wrap break-all">{JSON.stringify(sourceMeta, null, 2)}</pre>
+                </div>
+              </div>
             </div>
 
             {(price || info) && (
@@ -177,7 +193,7 @@ export default function StockPage() {
                   <div className="lg:col-span-2">
                     {!analysis ? (
                       <div className="glass-card p-8 flex items-center justify-center">
-                        <button onClick={() => api.analyzeStock(ticker).then(r => setAnalysis(r?.data))} className="btn-primary flex items-center gap-2">
+                        <button onClick={() => api.analyzeStock(ticker).then(r => { setAnalysis(r?.data); setMeta('ai', r?.meta); })} className="btn-primary flex items-center gap-2">
                           <Bot size={15} /> 运行 AI 分析
                         </button>
                       </div>

@@ -16,13 +16,26 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 
+def _cached_payload(cached):
+    if isinstance(cached, dict) and "data" in cached:
+        return cached.get("data"), cached.get("meta", {})
+    if isinstance(cached, dict):
+        src = cached.get("source", "unknown")
+    elif isinstance(cached, list) and cached and isinstance(cached[0], dict):
+        src = cached[0].get("source", "unknown")
+    else:
+        src = "unknown"
+    return cached, {"selected_source": src, "source_plan": ["cache_legacy"]}
+
+
 def _cached_route(cache_key: str, fetch_fn, ttl: int):
     cached = cache_get(cache_key)
     if cached:
-        return {"data": cached, "cached": True}
-    data = fetch_fn()
-    cache_set(cache_key, data, ttl=ttl)
-    return {"data": data, "cached": False}
+        data, meta = _cached_payload(cached)
+        return {"data": data, "meta": meta, "cached": True}
+    payload = fetch_fn()
+    cache_set(cache_key, payload, ttl=ttl)
+    return {"data": payload.get("data"), "meta": payload.get("meta"), "cached": False}
 
 
 @router.get("/insider")
@@ -30,7 +43,7 @@ def _cached_route(cache_key: str, fetch_fn, ttl: int):
 async def insider_trading(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"insider:{ticker.upper()}",
-        lambda: get_provider().fetch("insider", {"ticker": ticker.upper()}, source_type="sec"),
+        lambda: get_provider().fetch_with_meta("insider", {"ticker": ticker.upper()}, source_type="sec"),
         settings.CACHE_TTL_INSIDER,
     )
 
@@ -40,7 +53,7 @@ async def insider_trading(request: Request, ticker: str = Query(...)):
 async def whale_moves(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"whales:{ticker.upper()}",
-        lambda: get_provider().fetch("whales", {"ticker": ticker.upper()}),
+        lambda: get_provider().fetch_with_meta("whales", {"ticker": ticker.upper()}),
         settings.CACHE_TTL_WHALE,
     )
 
@@ -50,7 +63,7 @@ async def whale_moves(request: Request, ticker: str = Query(...)):
 async def institutional(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"institutional:{ticker.upper()}",
-        lambda: get_provider().fetch("institutional", {"ticker": ticker.upper()}),
+        lambda: get_provider().fetch_with_meta("institutional", {"ticker": ticker.upper()}),
         settings.CACHE_TTL_WHALE,
     )
 
@@ -60,7 +73,7 @@ async def institutional(request: Request, ticker: str = Query(...)):
 async def analyst_ratings(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"analyst:{ticker.upper()}",
-        lambda: get_provider().fetch("analyst", {"ticker": ticker.upper()}),
+        lambda: get_provider().fetch_with_meta("analyst", {"ticker": ticker.upper()}),
         settings.CACHE_TTL_POLITICIANS,
     )
 
@@ -70,7 +83,7 @@ async def analyst_ratings(request: Request, ticker: str = Query(...)):
 async def sec_filings(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"sec:{ticker.upper()}",
-        lambda: get_provider().fetch("sec", {"ticker": ticker.upper()}, source_type="sec"),
+        lambda: get_provider().fetch_with_meta("sec", {"ticker": ticker.upper()}, source_type="sec"),
         settings.CACHE_TTL_POLITICIANS,
     )
 
@@ -80,7 +93,7 @@ async def sec_filings(request: Request, ticker: str = Query(...)):
 async def revenue_breakdown(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"revenue:{ticker.upper()}",
-        lambda: get_provider().fetch("revenue", {"ticker": ticker.upper()}),
+        lambda: get_provider().fetch_with_meta("revenue", {"ticker": ticker.upper()}),
         settings.CACHE_TTL_DAILY,
     )
 
@@ -90,7 +103,7 @@ async def revenue_breakdown(request: Request, ticker: str = Query(...)):
 async def risk_factors(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"risk:{ticker.upper()}",
-        lambda: get_provider().fetch("risk", {"ticker": ticker.upper()}),
+        lambda: get_provider().fetch_with_meta("risk", {"ticker": ticker.upper()}),
         settings.CACHE_TTL_DAILY,
     )
 
@@ -100,7 +113,7 @@ async def risk_factors(request: Request, ticker: str = Query(...)):
 async def etf_holdings(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"etf:{ticker.upper()}",
-        lambda: get_provider().fetch("etf", {"ticker": ticker.upper()}, source_type="stock"),
+        lambda: get_provider().fetch_with_meta("etf", {"ticker": ticker.upper()}, source_type="stock"),
         settings.CACHE_TTL_WHALE,
     )
 
@@ -110,7 +123,7 @@ async def etf_holdings(request: Request, ticker: str = Query(...)):
 async def stock_splits(request: Request, ticker: str = Query(...)):
     return _cached_route(
         f"splits:{ticker.upper()}",
-        lambda: get_provider().fetch("splits", {"ticker": ticker.upper()}, source_type="stock"),
+        lambda: get_provider().fetch_with_meta("splits", {"ticker": ticker.upper()}, source_type="stock"),
         settings.CACHE_TTL_WHALE,
     )
 
@@ -120,7 +133,7 @@ async def stock_splits(request: Request, ticker: str = Query(...)):
 async def google_trends(request: Request, keyword: str = Query(...)):
     return _cached_route(
         f"trends:{keyword.lower()}",
-        lambda: get_provider().fetch("trends", {"keyword": keyword}),
+        lambda: get_provider().fetch_with_meta("trends", {"keyword": keyword}),
         settings.CACHE_TTL_TRENDS,
     )
 
@@ -130,7 +143,7 @@ async def google_trends(request: Request, keyword: str = Query(...)):
 async def consumer_interest(request: Request, keyword: str = Query(...)):
     return _cached_route(
         f"consumer:{keyword.lower()}",
-        lambda: get_provider().fetch("consumer", {"keyword": keyword}),
+        lambda: get_provider().fetch_with_meta("consumer", {"keyword": keyword}),
         settings.CACHE_TTL_TRENDS,
     )
 
@@ -140,7 +153,7 @@ async def consumer_interest(request: Request, keyword: str = Query(...)):
 async def patents(request: Request, company_name: str = Query(...)):
     return _cached_route(
         f"patents:{company_name.lower()}",
-        lambda: get_provider().fetch("patents", {"company_name": company_name}),
+        lambda: get_provider().fetch_with_meta("patents", {"company_name": company_name}),
         settings.CACHE_TTL_DAILY,
     )
 
@@ -150,7 +163,7 @@ async def patents(request: Request, company_name: str = Query(...)):
 async def cnbc_picks(request: Request, ticker: str = Query(None)):
     return _cached_route(
         f"media:cnbc:{ticker or 'all'}",
-        lambda: get_provider().fetch("media/cnbc", {"ticker": ticker or ""}),
+        lambda: get_provider().fetch_with_meta("media/cnbc", {"ticker": ticker or ""}),
         settings.CACHE_TTL_DAILY,
     )
 
@@ -160,7 +173,7 @@ async def cnbc_picks(request: Request, ticker: str = Query(None)):
 async def cramer_tracker(request: Request, ticker: str = Query(None)):
     return _cached_route(
         f"media:cramer:{ticker or 'all'}",
-        lambda: get_provider().fetch("media/cramer", {"ticker": ticker or ""}),
+        lambda: get_provider().fetch_with_meta("media/cramer", {"ticker": ticker or ""}),
         settings.CACHE_TTL_DAILY,
     )
 
@@ -170,6 +183,6 @@ async def cramer_tracker(request: Request, ticker: str = Query(None)):
 async def app_ratings(request: Request, app_name: str = Query(...)):
     return _cached_route(
         f"app-ratings:{app_name.lower()}",
-        lambda: get_provider().fetch("app-ratings", {"app_name": app_name}),
+        lambda: get_provider().fetch_with_meta("app-ratings", {"app_name": app_name}),
         settings.CACHE_TTL_DAILY,
     )

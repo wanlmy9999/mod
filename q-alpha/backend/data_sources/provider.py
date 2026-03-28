@@ -5,6 +5,7 @@ Q-Alpha 统一数据调度器
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 logger = logging.getLogger("q-alpha.provider")
@@ -148,6 +149,46 @@ class DataProvider:
 
         logger.warning(f"Unknown endpoint '{endpoint}', fallback to mock provider.")
         return self._mock.fetch(endpoint, params)
+
+    @staticmethod
+    def _extract_source(data: Any) -> str:
+        if isinstance(data, dict):
+            return data.get("source", "unknown")
+        if isinstance(data, list) and data:
+            first = data[0]
+            if isinstance(first, dict):
+                return first.get("source", "unknown")
+        return "unknown"
+
+    @staticmethod
+    def _source_plan(endpoint: str) -> list:
+        plans = {
+            "stock/price": ["finnhub_api", "eulerpool_api", "alpha_vantage_api", "akshare", "yfinance", "mock"],
+            "stock/candles": ["finnhub_api", "eulerpool_api", "alpha_vantage_api", "akshare", "yfinance", "mock"],
+            "stock/info": ["eulerpool_api", "alpha_vantage_api", "finnhub_api", "yfinance", "mock"],
+            "market/news": ["finnhub_api", "alpha_vantage_api", "reddit_scraper", "mock"],
+            "trends": ["reddit_scraper", "quiver_scraper", "mock"],
+            "consumer": ["reddit_scraper", "quiver_scraper", "mock"],
+            "gov/congress-trading": ["finnhub_api", "capitoltrades_scraper", "quiver_scraper", "mock"],
+            "gov/lobbying": ["opensecrets_scraper", "mock"],
+        }
+        return plans.get(endpoint, ["provider_router", "mock"])
+
+    def fetch_with_meta(self, endpoint: str, params: Optional[dict] = None, source_type: str = None) -> dict:
+        params = params or {}
+        data = self.fetch(endpoint, params, source_type=source_type)
+        selected = self._extract_source(data)
+        return {
+            "data": data,
+            "meta": {
+                "endpoint": endpoint,
+                "params": params,
+                "source_type": source_type or "",
+                "selected_source": selected,
+                "source_plan": self._source_plan(endpoint),
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+            },
+        }
 
     # ════════════════════════════════════════════════════════════
     # 股票行情数据
