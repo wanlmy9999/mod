@@ -1,6 +1,6 @@
 """
 Q-Alpha 统一数据调度器
-优先级链: Finnhub → Alpha Vantage → 聚合数据 → Tickdb → Yahoo Finance → Mock
+优先级链: Finnhub → EulerPool → Alpha Vantage → AkShare → Yahoo Finance → Mock
 所有端点均先查 Redis 缓存，缓存未命中时调用真实 API，失败则自动 Fallback
 """
 
@@ -17,18 +17,18 @@ class DataProvider:
     数据源优先级（股票价格）:
       1. Finnhub          — 实时高频，免费版每分钟60次
       2. Alpha Vantage    — 基本面+技术指标，免费版每分钟5次
-      3. 聚合数据(Juhe)   — 中文友好，国内访问稳定
-      4. Tickdb           — Bearer Token，有效期1个月
-      5. Yahoo Finance    — yfinance，无需 Key
-      6. Mock Data        — 兜底，保证界面永不空白
+      3. AkShare          — Python金融数据源，补充行情
+      4. Yahoo Finance    — yfinance，无需 Key
+      5. Mock Data        — 兜底，保证界面永不空白
     ─────────────────────────────────────────────────────────────
     """
 
     def __init__(self):
         self._finnhub   = None
+        self._eulerpool = None
         self._alphav    = None
-        self._juhe      = None
-        self._tickdb    = None
+        self._akshare   = None
+        self._scraper   = None
         self._yahoo     = None
         self._mock      = None
         self._init_providers()
@@ -37,15 +37,17 @@ class DataProvider:
         """延迟初始化所有数据提供商"""
         try:
             from data_sources.finnhub_provider  import FinnhubProvider
+            from data_sources.eulerpool_provider import EulerPoolProvider
             from data_sources.alphav_provider   import AlphaVantageProvider
-            from data_sources.juhe_provider     import JuheProvider
-            from data_sources.tickdb_provider   import TickdbProvider
+            from data_sources.akshare_provider  import AkShareProvider
+            from data_sources.web_scraper_provider import WebScraperProvider
             from data_sources.yahoo_provider    import YahooProvider
             from data_sources.mock_provider     import MockProvider
             self._finnhub = FinnhubProvider()
+            self._eulerpool = EulerPoolProvider()
             self._alphav  = AlphaVantageProvider()
-            self._juhe    = JuheProvider()
-            self._tickdb  = TickdbProvider()
+            self._akshare = AkShareProvider()
+            self._scraper = WebScraperProvider()
             self._yahoo   = YahooProvider()
             self._mock    = MockProvider()
         except Exception as e:
@@ -64,17 +66,101 @@ class DataProvider:
                 logger.debug(f"[{fn}] 失败: {e}")
         return None
 
+    def fetch(self, endpoint: str, params: Optional[dict] = None, source_type: str = None) -> Any:
+        """
+        兼容旧版统一入口：按 endpoint 分发到新的强类型方法。
+        source_type 参数仅为兼容保留（当前不参与路由决策）。
+        """
+        params = params or {}
+        ticker = params.get("ticker", "AAPL")
+        timeframe = params.get("timeframe", "3mo")
+        keyword = params.get("keyword", ticker)
+        member_name = params.get("member_name", "")
+        company_name = params.get("company_name", "")
+        politician_name = params.get("politician_name", "")
+        agency_name = params.get("agency_name", "")
+        app_name = params.get("app_name", "")
+        celebrity_name = params.get("celebrity_name", "")
+        _ = source_type  # backward compatibility
+
+        if endpoint == "stock/price":
+            return self.get_stock_price(ticker)
+        if endpoint == "stock/candles":
+            return self.get_candles(ticker, timeframe)
+        if endpoint == "stock/info":
+            return self.get_stock_info(ticker)
+        if endpoint == "market/popular":
+            return self.get_popular()
+        if endpoint == "market/news":
+            return self.get_news(ticker if "ticker" in params else None)
+        if endpoint == "insider":
+            return self.get_insider(ticker)
+        if endpoint == "whales":
+            return self.get_whales(ticker)
+        if endpoint == "institutional":
+            return self.get_whales_detail(ticker)
+        if endpoint == "analyst":
+            return self.get_analyst(ticker)
+        if endpoint == "sec":
+            return self._mock.fetch("sec", {"ticker": ticker.upper()})
+        if endpoint == "revenue":
+            return self.get_revenue(ticker)
+        if endpoint == "risk":
+            return self.get_risk(ticker)
+        if endpoint == "etf":
+            return self.get_etf(ticker)
+        if endpoint == "splits":
+            return self.get_splits(ticker)
+        if endpoint in ("trends", "consumer"):
+            return self.get_trends(keyword)
+        if endpoint == "patents":
+            return self.get_patents(company_name)
+        if endpoint == "media/cnbc":
+            return self.get_cnbc_picks()
+        if endpoint == "media/cramer":
+            return self.get_cramer_tracker()
+        if endpoint == "app-ratings":
+            return self.get_app_ratings(app_name)
+        if endpoint == "politician/search":
+            return self.get_politician_search(params.get("name", ""))
+        if endpoint == "gov/congress-trading":
+            return self.get_congressional_trading(
+                ticker=params.get("ticker"), member=member_name or None
+            )
+        if endpoint == "gov/networth":
+            return self.get_networth(member_name)
+        if endpoint == "gov/insider-score":
+            return self.get_insider_score(member_name)
+        if endpoint == "gov/lobbying":
+            return self.get_lobbying(company_name)
+        if endpoint == "gov/contracts":
+            return self.get_contracts(agency_name or None)
+        if endpoint == "gov/spending":
+            return self.get_spending(agency_name or None)
+        if endpoint == "gov/elections":
+            return self.get_elections()
+        if endpoint == "gov/fundraising":
+            return self.get_fundraising(politician_name)
+        if endpoint == "gov/corporate-donations":
+            return self.get_corporate_donations(company_name)
+        if endpoint == "portfolio/famous":
+            return self.get_famous_portfolio(celebrity_name)
+
+        logger.warning(f"Unknown endpoint '{endpoint}', fallback to mock provider.")
+        return self._mock.fetch(endpoint, params)
+
     # ════════════════════════════════════════════════════════════
     # 股票行情数据
     # ════════════════════════════════════════════════════════════
 
     def get_stock_price(self, ticker: str) -> dict:
-        """实时报价 — Finnhub > Juhe > Tickdb > Yahoo > Mock"""
+        """实时报价 — Finnhub > EulerPool > Alpha Vantage > AkShare > Yahoo > Mock"""
         t = ticker.upper()
         result = self._try_chain(
             lambda: self._finnhub and self._finnhub.get_quote(t),
-            lambda: self._juhe    and self._juhe.get_quote(t),
-            lambda: self._tickdb  and self._tickdb.get_quote(t),
+            lambda: self._eulerpool and self._eulerpool.get_quote(t),
+            lambda: self._alphav  and self._alphav.get_quote(t),
+            lambda: self._akshare and self._akshare.get_quote(t),
             lambda: self._yahoo   and self._yahoo.fetch("stock/price", {"ticker": t}),
         )
         if result:
@@ -82,12 +168,13 @@ class DataProvider:
         return self._mock.fetch("stock/price", {"ticker": t})
 
     def get_candles(self, ticker: str, timeframe: str = "3mo") -> dict:
-        """K线数据 — Finnhub > Alpha Vantage > Tickdb > Yahoo > Mock"""
+        """K线数据 — Finnhub > EulerPool > Alpha Vantage > AkShare > Yahoo > Mock"""
         t = ticker.upper()
         result = self._try_chain(
             lambda: self._finnhub and self._finnhub.get_candles(t, timeframe),
+            lambda: self._eulerpool and self._eulerpool.get_candles(t, timeframe),
             lambda: self._alphav  and self._alphav.get_daily_candles(t) if timeframe in ("3mo","6mo","1y","5y") else None,
-            lambda: self._tickdb  and self._tickdb.get_ohlcv(t, timeframe),
+            lambda: self._akshare and self._akshare.get_candles(t, timeframe),
             lambda: self._yahoo   and self._yahoo.fetch("stock/candles", {"ticker": t, "timeframe": timeframe}),
         )
         if result:
@@ -98,6 +185,7 @@ class DataProvider:
         """公司基本信息 — Alpha Vantage > Finnhub > Yahoo > Mock"""
         t = ticker.upper()
         result = self._try_chain(
+            lambda: self._eulerpool and self._eulerpool.get_profile(t),
             lambda: self._alphav  and self._alphav.get_overview(t),
             lambda: self._finnhub and self._finnhub.get_profile(t),
             lambda: self._yahoo   and self._yahoo.fetch("stock/info", {"ticker": t}),
@@ -225,6 +313,7 @@ class DataProvider:
         result = self._try_chain(
             lambda: self._finnhub and self._finnhub.get_news(t),
             lambda: self._alphav  and self._alphav.get_news_sentiment(t),
+            lambda: self._scraper and self._scraper.get_reddit_stock_mentions(t),
         )
         return result or self._mock.fetch("market/news", {})
 
@@ -251,6 +340,12 @@ class DataProvider:
             if member:
                 result = [t for t in result if member.lower() in t.get("politician","").lower()]
             return result
+        scraped = self._try_chain(
+            lambda: self._scraper and self._scraper.get_capitol_trades(member or ""),
+            lambda: self._scraper and self._scraper.get_quiver_headlines(member or ""),
+        )
+        if scraped:
+            return scraped
         return self._mock.fetch("gov/congress-trading", {"member_name": member or ""})
 
     def get_politician_search(self, name: str) -> list:
@@ -263,7 +358,10 @@ class DataProvider:
         return self._mock.fetch("gov/insider-score", {"member_name": member})
 
     def get_lobbying(self, company: str) -> list:
-        return self._mock.fetch("gov/lobbying", {"company_name": company})
+        result = self._try_chain(
+            lambda: self._scraper and self._scraper.get_opensecrets(company),
+        )
+        return result or self._mock.fetch("gov/lobbying", {"company_name": company})
 
     def get_contracts(self, agency: str = None) -> list:
         return self._mock.fetch("gov/contracts", {"agency_name": agency or ""})
@@ -310,7 +408,10 @@ class DataProvider:
     # ════════════════════════════════════════════════════════════
 
     def get_trends(self, keyword: str) -> dict:
-        return self._mock.fetch("trends", {"keyword": keyword})
+        result = self._try_chain(
+            lambda: self._scraper and self._scraper.get_trends_proxy(keyword),
+        )
+        return result or self._mock.fetch("trends", {"keyword": keyword})
 
     def get_etf(self, ticker: str) -> dict:
         result = self._try_chain(
@@ -331,7 +432,10 @@ class DataProvider:
         return self._mock.fetch("risk", {"ticker": ticker.upper()})
 
     def get_whales_detail(self, ticker: str) -> list:
-        return self._mock.fetch("whales", {"ticker": ticker.upper()})
+        result = self._try_chain(
+            lambda: self._scraper and self._scraper.get_quiver_headlines(ticker.upper()),
+        )
+        return result or self._mock.fetch("whales", {"ticker": ticker.upper()})
 
     def get_patents(self, company: str) -> list:
         return self._mock.fetch("patents", {"company_name": company})

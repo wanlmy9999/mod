@@ -9,11 +9,12 @@ API Key: N21EBMG315OFXTXB
 import logging
 import requests
 from typing import Any, Optional
+import os
 
 logger = logging.getLogger("q-alpha.alphav")
 
 ALPHAV_BASE = "https://www.alphavantage.co/query"
-ALPHAV_KEY  = "N21EBMG315OFXTXB"
+ALPHAV_KEY  = os.getenv("ALPHA_VANTAGE_API_KEY", "X64K3UQRI6YMC1WJ")
 
 
 def _get(params: dict) -> Optional[dict]:
@@ -415,4 +416,3 @@ class AlphaVantageProvider:
             except Exception:
                 continue
         return {"ticker": symbol.upper(), "interval": interval, "candles": candles} if candles else None
-

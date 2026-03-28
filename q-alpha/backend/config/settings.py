@@ -26,7 +26,7 @@ def load_api_keys() -> dict:
         "sec": "",
         "opensecrets": "",
         "usaspending": "",
-        "quiver": "",
+        "eulerpool": "",
     }
 
     # Load from config file if exists
@@ -48,7 +48,7 @@ def load_api_keys() -> dict:
         "SEC_API_KEY": "sec",
         "OPENSECRETS_API_KEY": "opensecrets",
         "USASPENDING_API_KEY": "usaspending",
-        "QUIVER_API_KEY": "quiver",
+        "EULERPOOL_API_KEY": "eulerpool",
     }
 
     for env_var, key_name in env_map.items():
