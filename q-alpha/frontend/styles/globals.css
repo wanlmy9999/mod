@@ -1,0 +1,179 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base Reset ────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: #030712;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Custom Scrollbar ──────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0f1e; }
+::-webkit-scrollbar-thumb { background: #1a2a4a; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #00d4ff44; }
+
+/* ── Selection ─────────────────────────────────────────────── */
+::selection { background: #00d4ff22; color: #00d4ff; }
+
+/* ── Q-Alpha Design System ──────────────────────────────────── */
+@layer components {
+
+  /* Glassmorphism Card */
+  .glass-card {
+    @apply bg-q-card border border-q-border rounded-xl backdrop-blur-sm;
+    background: linear-gradient(135deg, rgba(13, 21, 38, 0.95) 0%, rgba(10, 15, 30, 0.98) 100%);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  /* Neon Blue Glow */
+  .glow-blue {
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.25), 0 0 40px rgba(0, 212, 255, 0.1);
+    border-color: rgba(0, 212, 255, 0.4) !important;
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.25), 0 0 40px rgba(0, 255, 136, 0.1);
+    border-color: rgba(0, 255, 136, 0.4) !important;
+  }
+
+  .glow-red {
+    box-shadow: 0 0 20px rgba(255, 51, 102, 0.25);
+    border-color: rgba(255, 51, 102, 0.4) !important;
+  }
+
+  /* Neon Text */
+  .text-neon-blue {
+    color: #00d4ff;
+    text-shadow: 0 0 20px rgba(0, 212, 255, 0.6);
+  }
+
+  .text-neon-green {
+    color: #00ff88;
+    text-shadow: 0 0 20px rgba(0, 255, 136, 0.6);
+  }
+
+  .text-neon-red {
+    color: #ff3366;
+    text-shadow: 0 0 20px rgba(255, 51, 102, 0.6);
+  }
+
+  /* Metric value */
+  .metric-value {
+    @apply font-mono font-semibold text-q-text;
+  }
+
+  /* Button Primary */
+  .btn-primary {
+    @apply px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200;
+    background: linear-gradient(135deg, #00d4ff22, #00d4ff11);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: #00d4ff;
+  }
+
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #00d4ff33, #00d4ff22);
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+    transform: translateY(-1px);
+  }
+
+  /* Score Badge */
+  .score-badge {
+    @apply inline-flex items-center justify-center rounded-full font-mono font-bold;
+  }
+
+  /* Tag */
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+
+  .tag-buy   { @apply bg-q-green/10 text-q-green border border-q-green/20; }
+  .tag-hold  { @apply bg-q-amber/10 text-q-amber border border-q-amber/20; }
+  .tag-sell  { @apply bg-q-red/10 text-q-red border border-q-red/20; }
+  .tag-blue  { @apply bg-q-blue/10 text-q-blue border border-q-blue/20; }
+  .tag-dem   { @apply bg-blue-500/10 text-blue-400 border border-blue-500/20; }
+  .tag-rep   { @apply bg-red-500/10 text-red-400 border border-red-500/20; }
+
+  /* Ticker Tape */
+  .ticker-tape-track {
+    display: flex;
+    animation: ticker-slide 40s linear infinite;
+    white-space: nowrap;
+    width: max-content;
+  }
+
+  .ticker-tape-track:hover {
+    animation-play-state: paused;
+  }
+
+  /* Grid background lines */
+  .bg-grid {
+    background-image:
+      linear-gradient(rgba(26, 42, 74, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(26, 42, 74, 0.3) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Gradient borders */
+  .gradient-border {
+    position: relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(135deg, #00d4ff44, transparent, #00ff8822);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Number change animation */
+  .num-up   { color: #00ff88 !important; }
+  .num-down { color: #ff3366 !important; }
+  .num-flat { color: #8892a4 !important; }
+}
+
+/* ── ECharts Dark Override ─────────────────────────────────── */
+.echarts-for-react canvas {
+  border-radius: 8px;
+}
+
+/* ── Tooltip Overrides ─────────────────────────────────────── */
+[data-radix-tooltip-content] {
+  background: #0d1526 !important;
+  border: 1px solid #1a2a4a !important;
+  color: #e2e8f0 !important;
+  font-size: 12px !important;
+}
+
+/* ── Dialog Overlay ────────────────────────────────────────── */
+[data-radix-dialog-overlay] {
+  background: rgba(3, 7, 18, 0.85) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* ── Ticker Tape ───────────────────────────────────────────── */
+@keyframes ticker-slide {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
